@@ -1,3 +1,5 @@
+'use client';
+
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { useMutation } from '@tanstack/react-query';
