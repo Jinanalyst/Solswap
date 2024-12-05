@@ -12,11 +12,11 @@ interface Props {
 }
 
 export const WalletContextProvider: FC<Props> = ({ children }) => {
-  const walletAdapters = useMemo(() => wallets, []);
+  const walletsArray = useMemo(() => wallets, []);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={walletAdapters} autoConnect>
+      <WalletProvider wallets={walletsArray} autoConnect>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
