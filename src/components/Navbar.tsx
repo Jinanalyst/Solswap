@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { ThemeToggle } from './ThemeToggle';
+import { ClientWalletButton } from './ClientWalletProvider';
 
 export function Navbar() {
   const pathname = usePathname();
@@ -19,7 +19,7 @@ export function Navbar() {
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <div className="flex items-center gap-8">
           <Link href="/" className="text-2xl font-bold">
-            Solar<span className="text-primary">DEX</span>
+            Sol<span className="text-primary">swap</span>
           </Link>
           
           <div className="hidden items-center gap-6 md:flex">
@@ -39,7 +39,7 @@ export function Navbar() {
 
         <div className="flex items-center gap-4">
           <ThemeToggle />
-          <WalletMultiButton />
+          <ClientWalletButton />
         </div>
       </div>
     </nav>
