@@ -1,120 +1,200 @@
 'use client';
 
-import { useState } from 'react';
-import { Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { TradingView } from '@/components/TradingView';
 import { TokenSwap } from '@/components/TokenSwap';
 import { SwapForm } from '@/components/SwapForm';
 import { DCAForm } from '@/components/DCAForm';
 import { PositionsPanel } from '@/components/PositionsPanel';
 import { TransactionHistory } from '@/components/TransactionHistory';
+import { Orderbook } from '@/components/Orderbook';
+import { fetchAllSolanaPairs } from '@/lib/api';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
-const tradingPairs = [
-  { 
-    label: 'SOL/USDT',
-    value: 'SOLUSDT',
-    price: '108.45',
-    change: '+5.67%',
-    volume: '245.3M',
-    isPositive: true
-  },
-  { 
-    label: 'BTC/USDT',
-    value: 'BTCUSDT',
-    price: '43,567.89',
-    change: '-1.23%',
-    volume: '1.2B',
-    isPositive: false
-  },
-  { 
-    label: 'ETH/USDT',
-    value: 'ETHUSDT',
-    price: '2,345.67',
-    change: '+2.45%',
-    volume: '789.1M',
-    isPositive: true
-  },
-  { 
-    label: 'AVAX/USDT',
-    value: 'AVAXUSDT',
-    price: '34.56',
-    change: '+3.21%',
-    volume: '156.7M',
-    isPositive: true
-  },
-];
+interface TradingPair {
+  label: string;
+  value: string;
+  price: string;
+  change: string;
+  volume: string;
+  isPositive: boolean;
+  liquidity: string;
+  marketCap?: string;
+  dexId: string;
+  pairAddress: string;
+  baseToken: {
+    address: string;
+    name: string;
+    symbol: string;
+  };
+  priceUsd: number;
+}
 
 type Tab = 'trade' | 'swap' | 'dca';
 type BottomTab = 'positions' | 'transactions';
 
 export default function TradePage() {
-  const [selectedPair, setSelectedPair] = useState(tradingPairs[0]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [pairs, setPairs] = useState<TradingPair[]>([]);
+  const [selectedPair, setSelectedPair] = useState<TradingPair | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('trade');
   const [bottomTab, setBottomTab] = useState<BottomTab>('positions');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPairsOpen, setIsPairsOpen] = useState(true);
 
-  const filteredPairs = tradingPairs.filter(pair =>
-    pair.label.toLowerCase().includes(searchQuery.toLowerCase())
+  useEffect(() => {
+    const fetchPairs = async () => {
+      try {
+        if (!isLoading) setIsLoading(true);
+        console.log('Starting to fetch pairs...');
+        const pairsData = await fetchAllSolanaPairs();
+        console.log('Received pairs data:', pairsData.length, 'pairs');
+        
+        if (pairsData.length === 0) {
+          console.log('No pairs data received');
+          return;
+        }
+
+        const formattedPairs = pairsData.map(pair => ({
+          label: `${pair.symbol}/USDC`,
+          value: pair.symbol,
+          price: pair.price.toFixed(pair.price < 0.01 ? 8 : pair.price < 1 ? 4 : 2),
+          change: `${pair.priceChange24h >= 0 ? '+' : ''}${pair.priceChange24h.toFixed(2)}%`,
+          volume: pair.volume24h > 1000000 
+            ? `$${(pair.volume24h / 1000000).toFixed(1)}M` 
+            : `$${(pair.volume24h / 1000).toFixed(1)}K`,
+          liquidity: pair.liquidity > 1000000 
+            ? `$${(pair.liquidity / 1000000).toFixed(1)}M` 
+            : `$${(pair.liquidity / 1000).toFixed(1)}K`,
+          marketCap: pair.marketCap && pair.marketCap > 0 
+            ? pair.marketCap > 1000000 
+              ? `$${(pair.marketCap / 1000000).toFixed(1)}M` 
+              : `$${(pair.marketCap / 1000).toFixed(1)}K`
+            : undefined,
+          isPositive: pair.priceChange24h >= 0,
+          dexId: pair.dexId || '',
+          pairAddress: pair.pairAddress || '',
+          baseToken: {
+            address: pair.baseToken?.address || '',
+            name: pair.baseToken?.name || pair.symbol,
+            symbol: pair.symbol
+          },
+          priceUsd: pair.price
+        }));
+
+        console.log('Formatted pairs:', formattedPairs.length);
+        console.log('First formatted pair:', formattedPairs[0]);
+
+        setPairs(formattedPairs);
+        if (!selectedPair && formattedPairs.length > 0) {
+          setSelectedPair(formattedPairs[0]);
+        }
+      } catch (error) {
+        console.error('Error in fetchPairs:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchPairs();
+    const interval = setInterval(fetchPairs, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const filteredPairs = pairs.filter((pair) =>
+    pair.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    pair.baseToken.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    pair.dexId.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const renderForm = () => {
-    switch (activeTab) {
-      case 'trade':
-        return <TokenSwap selectedPair={selectedPair} />;
-      case 'swap':
-        return <SwapForm selectedPair={selectedPair} />;
-      case 'dca':
-        return <DCAForm selectedPair={selectedPair} />;
-    }
-  };
-
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-background">
-      {/* Left sidebar - Market selector */}
-      <div className="w-72 flex-none border-r border-border bg-card">
-        <div className="p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search markets"
-              className="w-full rounded-lg border border-border bg-background py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </div>
-        
-        <div className="border-y border-border bg-muted/30">
-          <div className="grid grid-cols-4 px-4 py-2 text-sm font-medium text-muted-foreground">
-            <div>Pair</div>
-            <div className="text-right">Price</div>
-            <div className="text-right">24h</div>
-            <div className="text-right">Vol</div>
-          </div>
-        </div>
+    <div className="flex h-screen">
+      {/* Left sidebar - Trading pairs */}
+      <Collapsible
+        open={isPairsOpen}
+        onOpenChange={setIsPairsOpen}
+        className="relative"
+      >
+        <CollapsibleContent className="data-[state=open]:w-80 data-[state=closed]:w-0 border-r border-border bg-card transition-all duration-300">
+          <div className="p-4 w-80">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search pairs..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background p-3 pl-10 focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+            </div>
 
-        <div className="h-[calc(100vh-12rem)] overflow-auto">
-          {filteredPairs.map((pair) => (
-            <button
-              key={pair.value}
-              onClick={() => setSelectedPair(pair)}
-              className={`w-full px-4 py-3 hover:bg-muted/50 ${
-                selectedPair.value === pair.value ? 'bg-muted' : ''
-              }`}
-            >
-              <div className="grid grid-cols-4 text-sm">
-                <div className="font-medium">{pair.label}</div>
-                <div className="text-right">{pair.price}</div>
-                <div className={`text-right ${pair.isPositive ? 'text-green-500' : 'text-red-500'}`}>
-                  {pair.change}
+            <div className="mt-4 h-[calc(100vh-8rem)] overflow-auto">
+              {isLoading ? (
+                <div className="text-center text-muted-foreground">
+                  Loading pairs...
                 </div>
-                <div className="text-right text-muted-foreground">{pair.volume}</div>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
+              ) : pairs.length === 0 ? (
+                <div className="text-center text-muted-foreground">
+                  No trading pairs found
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredPairs.length === 0 ? (
+                    <div className="text-center text-muted-foreground">
+                      No matches found for "{searchTerm}"
+                    </div>
+                  ) : (
+                    filteredPairs.map((pair) => (
+                      <div
+                        key={pair.pairAddress}
+                        className={`flex cursor-pointer items-center justify-between rounded-lg p-3 hover:bg-muted ${
+                          selectedPair?.pairAddress === pair.pairAddress ? 'bg-muted' : ''
+                        }`}
+                        onClick={() => setSelectedPair(pair)}
+                      >
+                        <div>
+                          <div className="font-medium">{pair.label}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {pair.baseToken.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {pair.dexId} • L: {pair.liquidity}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div>${pair.price}</div>
+                          <div
+                            className={`text-sm ${
+                              pair.isPositive ? 'text-green-500' : 'text-red-500'
+                            }`}
+                          >
+                            {pair.change}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Vol: {pair.volume}
+                          </div>
+                          {pair.marketCap && (
+                            <div className="text-xs text-muted-foreground">
+                              MCap: {pair.marketCap}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </CollapsibleContent>
+        
+        <CollapsibleTrigger asChild>
+          <button className="absolute -right-6 top-1/2 z-10 flex h-12 w-6 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-border bg-card hover:bg-muted">
+            {isPairsOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+        </CollapsibleTrigger>
+      </Collapsible>
 
       {/* Main content */}
       <div className="flex flex-1 flex-col">
@@ -122,30 +202,38 @@ export default function TradePage() {
         <div className="border-b border-border bg-card px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold">{selectedPair.label}</h1>
-              <div className={`text-lg ${selectedPair.isPositive ? 'text-green-500' : 'text-red-500'}`}>
-                {selectedPair.price}
+              <h1 className="text-2xl font-bold">{selectedPair?.label}</h1>
+              <div className={`text-lg ${selectedPair?.isPositive ? 'text-green-500' : 'text-red-500'}`}>
+                {selectedPair?.price}
               </div>
               <div className={`rounded px-2 py-1 text-sm ${
-                selectedPair.isPositive ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+                selectedPair?.isPositive ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
               }`}>
-                {selectedPair.change}
+                {selectedPair?.change}
               </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">24h Volume:</span>
-              <span className="font-medium">{selectedPair.volume}</span>
+              <span className="font-medium">{selectedPair?.volume}</span>
             </div>
           </div>
         </div>
 
         {/* Chart and Trading Area */}
         <div className="flex flex-1 min-h-0">
-          {/* Chart */}
+          {/* Chart and Orderbook */}
           <div className="flex flex-1 flex-col min-h-0">
-            <div className="flex-1 overflow-hidden p-4">
-              <div className="h-full rounded-lg border border-border bg-card">
-                <TradingView pair={selectedPair.value} />
+            <div className="flex flex-1 min-h-0">
+              {/* Chart */}
+              <div className="flex-1 p-4">
+                <div className="h-full rounded-lg border border-border bg-card">
+                  {selectedPair && <TradingView pair={selectedPair.value} />}
+                </div>
+              </div>
+              
+              {/* Orderbook */}
+              <div className="w-80 border-l border-border bg-card">
+                {selectedPair && <Orderbook pair={selectedPair} />}
               </div>
             </div>
 
@@ -174,55 +262,59 @@ export default function TradePage() {
                     Transaction History
                   </button>
                 </div>
-                <div className="flex-1 min-h-0">
-                  {bottomTab === 'positions' ? (
-                    <PositionsPanel />
-                  ) : (
-                    <TransactionHistory />
-                  )}
-                </div>
+                {bottomTab === 'positions' ? (
+                  <PositionsPanel />
+                ) : (
+                  <TransactionHistory />
+                )}
               </div>
             </div>
           </div>
 
-          {/* Trading Form */}
-          <div className="w-96 flex-none border-l border-border bg-card">
-            <div className="border-b border-border">
-              <div className="flex">
-                <button
-                  onClick={() => setActiveTab('trade')}
-                  className={`flex-1 px-4 py-3 text-sm font-medium ${
-                    activeTab === 'trade'
-                      ? 'border-b-2 border-primary text-primary'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  Trade
-                </button>
-                <button
-                  onClick={() => setActiveTab('swap')}
-                  className={`flex-1 px-4 py-3 text-sm font-medium ${
-                    activeTab === 'swap'
-                      ? 'border-b-2 border-primary text-primary'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  Swap
-                </button>
-                <button
-                  onClick={() => setActiveTab('dca')}
-                  className={`flex-1 px-4 py-3 text-sm font-medium ${
-                    activeTab === 'dca'
-                      ? 'border-b-2 border-primary text-primary'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  DCA
-                </button>
-              </div>
+          {/* Trading Interface */}
+          <div className="w-96 border-l border-border bg-card p-4">
+            <div className="flex items-center gap-4 border-b border-border">
+              <button
+                onClick={() => setActiveTab('trade')}
+                className={`px-4 py-2 text-sm font-medium ${
+                  activeTab === 'trade'
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Trade
+              </button>
+              <button
+                onClick={() => setActiveTab('swap')}
+                className={`px-4 py-2 text-sm font-medium ${
+                  activeTab === 'swap'
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Swap
+              </button>
+              <button
+                onClick={() => setActiveTab('dca')}
+                className={`px-4 py-2 text-sm font-medium ${
+                  activeTab === 'dca'
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                DCA
+              </button>
             </div>
-            <div className="p-4">
-              {renderForm()}
+            <div className="mt-4">
+              {activeTab === 'trade' && selectedPair && (
+                <TokenSwap pair={selectedPair} />
+              )}
+              {activeTab === 'swap' && selectedPair && (
+                <SwapForm pair={selectedPair} />
+              )}
+              {activeTab === 'dca' && selectedPair && (
+                <DCAForm pair={selectedPair} />
+              )}
             </div>
           </div>
         </div>

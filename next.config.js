@@ -15,15 +15,14 @@ const nextConfig = {
         tls: false,
         crypto: require.resolve('crypto-browserify'),
         stream: require.resolve('stream-browserify'),
-        url: require.resolve('url/'),
+        url: false,
         zlib: require.resolve('browserify-zlib'),
         http: require.resolve('stream-http'),
         https: require.resolve('https-browserify'),
-        assert: require.resolve('assert/'),
+        assert: require.resolve('assert'),
         os: require.resolve('os-browserify/browser'),
         path: require.resolve('path-browserify'),
-        buffer: require.resolve('buffer/'),
-        ws: require.resolve('ws'),
+        buffer: require.resolve('buffer'),
       };
 
       config.plugins.push(
@@ -33,9 +32,6 @@ const nextConfig = {
         })
       );
     }
-
-    // Prevent webpack from trying to bundle native modules
-    config.externals = [...(config.externals || []), { 'utf-8-validate': 'utf-8-validate', bufferutil: 'bufferutil' }];
 
     return config;
   },
@@ -47,8 +43,6 @@ const nextConfig = {
     '@solana/wallet-adapter-phantom',
     '@solana/wallet-adapter-solflare',
     '@solana/spl-token',
-    'rpc-websockets',
-    'ws',
   ],
 }
 

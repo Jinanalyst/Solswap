@@ -2,19 +2,81 @@
 
 import { useState } from 'react';
 import { ArrowDownUp } from 'lucide-react';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useConnection } from '@solana/wallet-adapter-react';
+import { PublicKey, Transaction } from '@solana/web3.js';
+import { TOKENS } from '@/lib/constants';
+import axios from 'axios';
 
 interface TokenSwapProps {
-  selectedPair?: {
+  pair: {
     label: string;
     value: string;
     price: string;
+    baseToken: {
+      address: string;
+      symbol: string;
+    }
   };
 }
 
-export function TokenSwap({ selectedPair }: TokenSwapProps) {
+export function TokenSwap({ pair }: TokenSwapProps) {
+  const { publicKey, signTransaction } = useWallet();
+  const { connection } = useConnection();
   const [amount, setAmount] = useState('');
   const [orderType, setOrderType] = useState('market');
   const [side, setSide] = useState('buy');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleTrade = async () => {
+    if (!publicKey || !signTransaction || !amount || !pair.baseToken.address) {
+      console.error('Missing required parameters for trade');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const inputMint = side === 'buy' ? TOKENS.USDC.mint.toString() : pair.baseToken.address;
+      const outputMint = side === 'buy' ? pair.baseToken.address : TOKENS.USDC.mint.toString();
+      const inputAmount = Number(amount) * (10 ** (side === 'buy' ? TOKENS.USDC.decimals : 9));
+
+      // Get quote from Jupiter API
+      const quoteResponse = await axios.get('https://quote-api.jup.ag/v6/quote', {
+        params: {
+          inputMint,
+          outputMint,
+          amount: inputAmount.toString(),
+          slippageBps: 50,
+        },
+      });
+
+      if (!quoteResponse.data || !quoteResponse.data.quoteResponse) {
+        throw new Error('No quote available');
+      }
+
+      // Get serialized transactions from Jupiter API
+      const { swapTransaction } = await axios.post('https://quote-api.jup.ag/v6/swap', {
+        quoteResponse: quoteResponse.data.quoteResponse,
+        userPublicKey: publicKey.toString(),
+        wrapAndUnwrapSol: true,
+      }).then(response => response.data);
+
+      // Deserialize and sign the transaction
+      const transaction = Transaction.from(Buffer.from(swapTransaction, 'base64'));
+      const signed = await signTransaction(transaction);
+      
+      // Send the transaction
+      const txid = await connection.sendRawTransaction(signed.serialize());
+      await connection.confirmTransaction(txid);
+      
+      console.log('Trade successful:', txid);
+      setAmount('');
+    } catch (error) {
+      console.error('Error trading tokens:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const orderTypes = [
     { label: 'Market', value: 'market' },
@@ -68,7 +130,7 @@ export function TokenSwap({ selectedPair }: TokenSwapProps) {
         <div className="space-y-4">
           <div>
             <label className="mb-2 block text-sm text-muted-foreground">
-              Amount {selectedPair?.label.split('/')[0]}
+              Amount {pair.baseToken.symbol}
             </label>
             <div className="relative">
               <input
@@ -94,7 +156,7 @@ export function TokenSwap({ selectedPair }: TokenSwapProps) {
               <input
                 type="text"
                 className="w-full rounded-lg border border-border bg-background p-3 focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder={selectedPair?.price || '0.00'}
+                placeholder={pair.price || '0.00'}
               />
             </div>
           )}
@@ -118,13 +180,11 @@ export function TokenSwap({ selectedPair }: TokenSwapProps) {
           </div>
 
           <button
-            className={`w-full rounded-lg py-4 font-semibold ${
-              side === 'buy'
-                ? 'bg-green-500 text-white hover:bg-green-600'
-                : 'bg-red-500 text-white hover:bg-red-600'
-            }`}
+            onClick={handleTrade}
+            disabled={!publicKey || isLoading || !amount}
+            className="mt-6 w-full rounded-lg bg-primary py-4 font-semibold text-white hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {side === 'buy' ? 'Buy' : 'Sell'} {selectedPair?.label.split('/')[0]}
+            {!publicKey ? 'Connect Wallet' : isLoading ? 'Trading...' : `${side === 'buy' ? 'Buy' : 'Sell'} ${pair.baseToken.symbol}`}
           </button>
         </div>
       </div>

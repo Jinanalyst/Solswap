@@ -1,30 +1,26 @@
 'use client';
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from 'next-themes';
-import { WalletContextProvider } from '@/components/WalletContextProvider';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { WalletProvider } from '@solana/wallet-adapter-react';
+import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
+import { WALLET_ADAPTERS, RPC_ENDPOINT } from '@/config/wallet';
+import { useMemo } from 'react';
+import { ConnectionProvider } from '@solana/wallet-adapter-react';
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
-      staleTime: 5 * 1000,
-    },
-  },
-});
+require('@solana/wallet-adapter-react-ui/styles.css');
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const wallets = useMemo(() => WALLET_ADAPTERS.map(Adapter => new Adapter()), []);
+
   return (
-    <ErrorBoundary>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-        <WalletContextProvider>
-          <QueryClientProvider client={queryClient}>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <ConnectionProvider endpoint={RPC_ENDPOINT}>
+        <WalletProvider wallets={wallets} autoConnect>
+          <WalletModalProvider>
             {children}
-          </QueryClientProvider>
-        </WalletContextProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+          </WalletModalProvider>
+        </WalletProvider>
+      </ConnectionProvider>
+    </ThemeProvider>
   );
 }
